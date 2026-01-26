@@ -1,71 +1,66 @@
-allegro_hand_windows (v4)
-====================
+# Allegro Hand Windows (v4)
 
 This application is lightweight control and communication software for the Allegro Hand (AH) using Windows.
 
-myAllegroHand*.exe:
- Allegro Hand control and CAN communication module.
+## Executables
 
-rPanelManipulator.exe 
- GUI Interface for executing different control and grasp modes
- 
- 
-Instructions
-============ 
+| File | Description |
+|------|-------------|
+| `myAllegroHand*.exe` | Allegro Hand control and CAN communication module |
+| `rPanelManipulator.exe` | GUI Interface for executing different control and grasp modes |
 
- 1. Open up the solution, myAllegroHand.sln, in Visual Studio
- 2. Right click the project 'myAllegroHand' in the Solution Explorer and click 'Properties'
- 3. At the top of the 'Property Pages' window, set Configuration to 'All Configurations'
- 4. Navigate to Configuration Properties > Debugging and set the Working Directory to 'bin'
- 5. Open myAllegroHand.cpp and, near the top, find comment '// USER HAND CONFIGURATION' and the constants below it
+## Instructions
 
- 6. const bool RIGHT_HAND: Set to 'true' if using a right AH and false if using left
- 7. const int HAND_VERSION: For version 4.x, set to '4'.
- 
+1. Open up the solution, `myAllegroHand.sln`, in Visual Studio
+2. Right click the project `myAllegroHand` in the Solution Explorer and click `Properties`
+3. At the top of the `Property Pages` window, set Configuration to `All Configurations`
+4. Navigate to **Configuration Properties > Debugging** and set the Working Directory to `bin`
+5. Open `myAllegroHand.cpp` and, near the top, find comment `// USER HAND CONFIGURATION` and the constants below it
+6. `const bool RIGHT_HAND`: Set to `true` if using a right AH and `false` if using left
+7. `const int HAND_VERSION`: For version 4.x, set to `4`
+
 You are now ready to compile, plug in and turn on your hand, and test the program.
 
-Keyboard commands can be used to execute grasps and other joint configurations. 
-See the instructions printed at the beginning of the application.
+Keyboard commands can be used to execute grasps and other joint configurations. See the instructions printed at the beginning of the application.
 
-=====
+## Project Structure
 
 Allegro Hand Standalone Visual Studio Project and Source
 
 This file contains a summary of what you will find in each of the files that make up your myAllegroHand application.
 
-
-
-**myAllegroHand.vcproj:**
+### myAllegroHand.vcproj
 
 This is the main project file for VC++ projects generated using an Application Wizard. It contains information about the version of Visual C++ that generated the file, and information about the platforms, configurations, and project features selected with the Application Wizard.
 
-	
-	
-**myAllegroHand.cpp:**
+### myAllegroHand.cpp
 
 This is the main application source file.
 
-	
-	
-**Other standard files:**
+### Other standard files
 
-StdAfx.h, StdAfx.cpp
+`StdAfx.h`, `StdAfx.cpp`
 
-These files are used to build a precompiled header (PCH) file named myAllegroHand.pch and a precompiled types file named StdAfx.obj.
+These files are used to build a precompiled header (PCH) file named `myAllegroHand.pch` and a precompiled types file named `StdAfx.obj`.
 
-	
-	
-**Other notes:**
+## Notes
 
-AppWizard uses "TODO:" comments to indicate parts of the source code you should add to or customize.
+- AppWizard uses `TODO:` comments to indicate parts of the source code you should add to or customize.
+- For more information regarding setting the project properties, etc., please see the included document `Allegro_Hand_MSVS_Project_*.pdf`.
 
-For more information regarding setting the project properties, etc., please see the included document Allegro_Hand_MSVS_Project_*.pdf.
+> **Note:** This document is currently provided only in Korean. All important setup information can be gathered directly from the screenshots.
 
-**Note:** This document is currently provided only in Korean. All important setup information can be gathered deirectly from the screenshots.
+---
 
+## Maintained by
 
+**WonikRobotics**
 
-**Questions?**
+## Contact
 
-Please email Sean Yi
-seanyi@wonikrobotics.com
+robotics.biz@wonik.com
+
+## Links
+
+- [Official Allegro Hand Website](https://www.allegrohand.com/)
+- [Community Forum](https://www.allegrohand.com/forum)
