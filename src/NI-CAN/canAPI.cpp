@@ -24,14 +24,8 @@ CANAPI_BEGIN
 
 
 #define CH_COUNT			(int)1 // number of CAN channels
-
-
-int hd[CH_COUNT], ret_c;
-long id;
-unsigned char sdata[8], rdata[8];
-unsigned int dlc, flags;
-unsigned long timestamp;
-
+unsigned char CAN_ID = 0;
+int hd[CH_COUNT];
 
 #define canMSG_MASK             0x00ff      // Used to mask the non-info bits
 #define canMSG_RTR              0x0001      // Message is a remote request
@@ -42,7 +36,6 @@ unsigned long timestamp;
 #define canMSG_ERROR_FRAME      0x0020      // Message is an error frame
 #define canMSG_TXACK            0x0040      // Message is a TX ACK (msg is really sent)
 #define canMSG_TXRQ             0x0080      // Message is a TX REQUEST (msg is transfered to the chip)
-
 
 
 //#define _DUMP_RXFRAME (1)
@@ -118,17 +111,34 @@ void PrintRxFrame()
 	printf("\n");
 }
 
+int canWriteRTR(int handle,	long id)
+{
+	if (!handle)
+		return -1;
+
+	TxFrame.IsRemote = NC_FRMTYPE_REMOTE;
+	TxFrame.ArbitrationId = (id << 2) | CAN_ID;
+	TxFrame.DataLength = 0;
+	Status = ncWrite(handle, sizeof(NCTYPE_CAN_FRAME), &TxFrame);
+	if (Status < 0)
+	{
+		PrintStat(Status, "ncWrite");
+		return Status;
+	}
+	return Status;
+}
+
 int canWrite(int handle,
 			 long id, 
 			 void * msg,
 			 unsigned int dlc,
-			 unsigned int /*flag*/)
+			 unsigned int flag)
 {
 	if (!handle)
 		return -1;
 
 	TxFrame.IsRemote = NC_FRMTYPE_DATA;
-	TxFrame.ArbitrationId = id;
+	TxFrame.ArbitrationId = (id << 2) | CAN_ID;
 	TxFrame.DataLength = dlc;
 	for (int i=0; i<dlc; i++)
 		TxFrame.Data[i] = ((NCTYPE_UINT8_P)msg)[i];
@@ -153,7 +163,7 @@ int canRead(int handle,
 
 	memset(&RxFrame, 0, sizeof(NCTYPE_CAN_FRAME));
 	//RxFrame.FrameType = NC_FRMTYPE_DATA;
-	RxFrame.DataLength = *dlc;
+	//RxFrame.DataLength = *dlc;
 	Status = ncRead(handle, sizeof(NCTYPE_CAN_STRUCT), &RxFrame);
 	if (Status < 0 || NC_FRMTYPE_DATA != RxFrame.FrameType)
 	{
@@ -166,7 +176,7 @@ int canRead(int handle,
 		return Status;
 	}
 
-	(*id) = RxFrame.ArbitrationId;
+	(*id) = (RxFrame.ArbitrationId & 0xfffffffc) >> 2;
 	//(*time) = (FILETIME)(RxFrame.Timestamp);
 	(*dlc) = RxFrame.DataLength;
 	for (int i=0; i<RxFrame.DataLength; i++)
@@ -197,8 +207,8 @@ int canReadWait(int handle,
 	}
 
 	memset(&RxFrame, 0, sizeof(NCTYPE_CAN_FRAME));
-	RxFrame.FrameType = NC_FRMTYPE_DATA;
-	RxFrame.DataLength = *dlc;
+	//RxFrame.FrameType = NC_FRMTYPE_DATA;
+	//RxFrame.DataLength = *dlc;
 	Status = ncRead(handle, sizeof(NCTYPE_CAN_STRUCT), &RxFrame);
 	if (Status < 0)
 	{
@@ -217,7 +227,9 @@ int canReadWait(int handle,
 	return Status;
 }
 
-
+/*========================================*/
+/*       Public functions (CAN API)       */
+/*========================================*/
 int command_can_open(int ch)
 {
 	NCTYPE_ATTRID		AttrIdList[8];
@@ -307,6 +319,7 @@ int command_can_reset(int ch)
 	/*int nc;
 
 	printf("<< CAN: Reset Bus\n");
+	int ret_c;
 	for(nc=0; nc<CH_COUNT; nc++) {
 		ret_c = canResetBus(hd[nc]);
 		if (ret_c < 0) return ret_c;
@@ -336,127 +349,206 @@ int command_can_close(int ch)
 	return 1;
 }
 
-int command_can_query_id(int ch)
+int command_can_set_id(int ch, unsigned char can_id)
 {
-	long Txid;
-	unsigned char data[8];
-
-	Txid = ((unsigned long)ID_CMD_QUERY_ID<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	canWrite(TxHandle, Txid, data, 0, STD);
-
+	CAN_ID = can_id;
 	return 0;
 }
 
-int command_can_sys_init(int ch, int period_msec)
+int command_servo_on(int ch)
 {
 	long Txid;
 	unsigned char data[8];
+	int ret;
 
-	Txid = ((unsigned long)ID_CMD_SET_PERIOD<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	data[0] = (unsigned char)period_msec;
-	canWrite(TxHandle, Txid, data, 1, STD);
+	Txid = ID_CMD_SYSTEM_ON;
+	ret = canWrite(TxHandle, Txid, data, 0, canMSG_STD);
 
-	Sleep(10);
-
-	Txid = ((unsigned long)ID_CMD_SET_MODE_TASK<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	canWrite(TxHandle, Txid, data, 0, STD);
-
-	Sleep(10);
-
-	Txid = ((unsigned long)ID_CMD_QUERY_STATE_DATA<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	canWrite(TxHandle, Txid, data, 0, STD);
-
-	return 0;
+	return ret;
 }
 
-int command_can_start(int ch)
+int command_servo_off(int ch)
 {
 	long Txid;
 	unsigned char data[8];
+	int ret;
 
-	Txid = ((unsigned long)ID_CMD_QUERY_STATE_DATA<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	canWrite(TxHandle, Txid, data, 0, STD);
+	Txid = ID_CMD_SYSTEM_OFF;
+	ret = canWrite(TxHandle, Txid, data, 0, canMSG_STD);
 
-	Sleep(10);
-
-	Txid = ((unsigned long)ID_CMD_SET_SYSTEM_ON<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	canWrite(TxHandle, Txid, data, 0, STD);
-
-	return 0;
+	return ret;
 }
 
-int command_can_stop(int ch)
+int command_set_torque(int ch, int findex, short* pwm)
 {
+	assert(findex >= 0 && findex < NUM_OF_FINGERS);
+
 	long Txid;
-	unsigned char data[8];
+	short duty[4];
+	int ret;
 
-	Txid = ((unsigned long)ID_CMD_SET_SYSTEM_OFF<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	canWrite(TxHandle, Txid, data, 0, STD);
-
-	return 0;
-}
-
-int command_can_AHRS_set(int ch, unsigned char rate, unsigned char mask)
-{
-	long Txid;
-	unsigned char data[8];
-
-	Txid = ((unsigned long)ID_CMD_AHRS_SET<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	data[0] = (unsigned char)rate;
-	data[1] = (unsigned char)mask;
-	canWrite(TxHandle, Txid, data, 2, STD);
-
-	return 0;
-}
-
-int write_current(int ch, int findex, short* pwm)
-{
-	long Txid;
-	unsigned char data[8];
-
-	if (findex >= 0 && findex < 4)
+	if (findex >= 0 && findex < NUM_OF_FINGERS)
 	{
-		data[0] = (unsigned char)( (pwm[0] >> 8) & 0x00ff);
-		data[1] = (unsigned char)(pwm[0] & 0x00ff);
+		duty[0] = pwm[0];
+		duty[1] = pwm[1];
+		duty[2] = pwm[2];
+		duty[3] = pwm[3];
 
-		data[2] = (unsigned char)( (pwm[1] >> 8) & 0x00ff);
-		data[3] = (unsigned char)(pwm[1] & 0x00ff);
+		Txid = ID_CMD_SET_TORQUE_1 + findex;
 
-		data[4] = (unsigned char)( (pwm[2] >> 8) & 0x00ff);
-		data[5] = (unsigned char)(pwm[2] & 0x00ff);
-
-		data[6] = (unsigned char)( (pwm[3] >> 8) & 0x00ff);
-		data[7] = (unsigned char)(pwm[3] & 0x00ff);
-
-		Txid = ((unsigned long)(ID_CMD_SET_TORQUE_1 + findex)<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-		canWrite(TxHandle, Txid, data, 8, STD);
+		ret = canWrite(TxHandle, Txid, (unsigned char*)duty, 8, canMSG_STD);
 	}
 	else
 		return -1;
-	
-	return 0;
+
+	return ret;
 }
 
-int get_message(int ch, char* cmd, char* src, char* des, int* len, unsigned char* data, int blocking)
+int command_set_pose(int ch, int findex, short* jposition)
 {
-	long id;
+	assert(findex >= 0 && findex < NUM_OF_FINGERS);
+
+	long Txid;
+	short pose[4];
+	int ret;
+
+	if (findex >= 0 && findex < NUM_OF_FINGERS)
+	{
+		pose[0] = jposition[0];
+		pose[1] = jposition[1];
+		pose[2] = jposition[2];
+		pose[3] = jposition[3];
+
+		Txid = ID_CMD_SET_POSE_1 + findex;
+
+		canWrite(TxHandle, Txid, (unsigned char *)pose, 8, canMSG_STD);
+	}
+	else
+		return -1;
+
+	return ret;
+}
+
+int command_set_period(int ch, short* period)
+{
+	long Txid;
+	can_period_msg_t msg;
+	int ret;
+
+	Txid = ID_CMD_SET_PERIOD;
+	if (period != 0)
+	{
+		msg.position = period[0];
+		msg.imu = period[1];
+		msg.temp = period[2];
+	}
+	else
+	{
+		msg.position = 0;
+		msg.imu = 0;
+		msg.temp = 0;
+	}
+	ret = canWrite(TxHandle, Txid, (unsigned char *)&msg, 8, canMSG_STD);
+
+	return ret;
+}
+
+int command_set_device_id(int ch, unsigned char did)
+{
+	long Txid;
+	int ret;
+	can_config_msg_t msg;
+
+	Txid = ID_CMD_CONFIG;
+	msg.set = 0x01;
+	msg.did = did;
+	msg.baudrate = 0;
+	ret = canWrite(TxHandle, Txid, (unsigned char *)&msg, 6, canMSG_STD);
+
+	return ret;
+}
+
+int command_set_rs485_baudrate(int ch, unsigned int baudrate)
+{
+	long Txid;
+	int ret;
+	can_config_msg_t msg;
+
+	Txid = ID_CMD_CONFIG;
+
+	msg.set = 0x02;
+	msg.did = 0;
+	msg.baudrate = baudrate;
+	ret = canWrite(TxHandle, Txid, (unsigned char *)&msg, 6, canMSG_STD);
+
+	return ret;
+}
+
+int request_hand_information(int ch)
+{
+	long Txid = ID_RTR_HAND_INFO;
+	int ret = canWriteRTR(TxHandle, Txid);
+
+	return ret;
+}
+
+int request_hand_serial(int ch)
+{
+	long Txid = ID_RTR_SERIAL;
+	int ret = canWriteRTR(TxHandle, Txid);
+
+	return ret;
+}
+
+int request_finger_pose(int ch, int findex)
+{
+	assert(findex >= 0 && findex < NUM_OF_FINGERS);
+
+	long Txid = ID_RTR_FINGER_POSE + findex;
+	int ret = canWriteRTR(TxHandle, Txid);
+
+	return ret;
+}
+
+int request_imu_data(int ch)
+{
+	long Txid = ID_RTR_IMU_DATA;
+	int ret = canWriteRTR(TxHandle, Txid);
+
+	return ret;
+}
+
+int request_temperature(int ch, int sindex)
+{
+	assert(sindex >= 0 && sindex < NUM_OF_TEMP_SENSORS);
+
+	long Txid = ID_RTR_TEMPERATURE + sindex;
+	int ret = canWriteRTR(TxHandle, Txid);
+
+	return ret;
+}
+
+int get_message(int ch, int* id, int* len, unsigned char* data, int blocking)
+{
+	long id_;
+	unsigned char rdata[8];
+	unsigned int dlc, flags;
+	unsigned long timestamp;
+
 
 	memset(rdata, NULL, sizeof(rdata));
-	Status = canRead(TxHandle, &id, rdata, &dlc, &flags, &timestamp);
+	Status = canRead(TxHandle, &id_, rdata, &dlc, &flags, &timestamp);
 	if (Status != 0) return Status;
 	//printf("    %ld+%ld (%d)", id-id%128, id%128, dlc);
 	//for(int nd=0; nd<(int)dlc; nd++) printf(" %3d ", rdata[nd]);
 	//printf("\n");
 
-	*cmd = (char)( (id >> 6) & 0x1f );
-	*des = (char)( (id >> 3) & 0x07 );
-	*src = (char)( id & 0x07);
+	*id = id_;
 	*len = (int)dlc;
 	for(int nd=0; nd<(int)dlc; nd++) data[nd] = rdata[nd];
 
 	return 0;
 }
-
 
 
 CANAPI_END

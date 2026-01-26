@@ -16,35 +16,27 @@
 #endif
 #include <malloc.h>
 #include <assert.h>
-//project headers
+
+#ifndef _WIN32
+typedef unsigned int DWORD;
+typedef unsigned short WORD;
+typedef char BYTE;
+typedef void* LPSTR;
+#endif
+
 extern "C" {
 #include "Peak/PCANBasic.h"
 }
 #include "canDef.h"
 #include "canAPI.h"
 
-
 CANAPI_BEGIN
-
-/*=====================*/
-/*       Defines       */
-/*=====================*/
-//macros
-#define isAlpha(c) ( ((c >= 'A') && (c <= 'Z')) ? 1 : 0 )
-#define isSpace(c) ( (c == ' ') ? 1 : 0 )
-#define isDigit(c) ( ((c >= '0') && (c <= '9')) ? 1 : 0 )
-#define ADDR2NODE(x) ((((x) >> 5) & 0x001F) - BASE_ID)
-#define NODE2ADDR(x) (((mbxID + BASE_ID) << 5) | ((x) + BASE_ID))
-#define GROUPID(n)   (((mbxID + BASE_ID) << 5) | (0x0400 + (n)))
-#define BROADCAST    (GROUPID(0))
-#define Border(Value,Min,Max)  (Value<Min)?Min:((Value>Max)?Max:Value)
-//typedefs & structs
-typedef unsigned long DWORD;
 
 /*=========================================*/
 /*       Global file-scope variables       */
 /*=========================================*/
 
+unsigned char CAN_ID = 0;
 TPCANHandle canDev[MAX_BUS] = {
 	PCAN_NONEBUS, // Undefined/default value for a PCAN bus
 
@@ -81,17 +73,10 @@ TPCANHandle canDev[MAX_BUS] = {
 	PCAN_PCCBUS2, // PCAN-PC Card interface, channel 2
 };
 
-
 /*==========================================*/
-/*       Private functions prototypes       */
+/*       Private functions                  */
 /*==========================================*/
-int canReadMsg(int bus, int *id, int *len, unsigned char *data, int blocking);
-int canSendMsg(int bus, int id, char len, unsigned char *data, int blocking);
-
-/*========================================*/
-/*       Public functions (CAN API)       */
-/*========================================*/
-int initCAN(int bus){
+int initCAN(int bus) {
 	TPCANStatus Status = PCAN_ERROR_OK;
 	char strMsg[256];
 	TPCANBaudrate Baudrate = PCAN_BAUD_1M;
@@ -103,37 +88,24 @@ int initCAN(int bus){
 	if (Status != PCAN_ERROR_OK)
 	{
 		CAN_GetErrorText(Status, 0, strMsg);
-		printf("initCAN(): CAN_Initialize() failed with error %ld\n", Status);
+		printf("initCAN(): CAN_Initialize() failed with error %u\n", Status);
 		printf("%s\n", strMsg);
 		return Status;
 	}
-
-	//Status = CAN_FilterMessages(
-	//	canDev[bus],
-	//	((unsigned long)(ID_CMD_QUERY_CONTROL_DATA) <<6) | ((unsigned long)ID_DEVICE_MAIN <<3) | ((unsigned long)ID_DEVICE_SUB_01),
-	//	((unsigned long)(ID_CMD_QUERY_CONTROL_DATA) <<6) | ((unsigned long)ID_DEVICE_MAIN <<3) | ((unsigned long)ID_DEVICE_SUB_04),
-	//	PCAN_MESSAGE_STANDARD);
-	//if (Status != PCAN_ERROR_OK)
-	//{
-	//	CAN_GetErrorText(Status, 0, strMsg);
-	//	printf("initCAN(): CAN_FilterMessages() failed with error %ld\n", Status);
-	//	printf("%s\n", strMsg);
-	//	//return Status;
-	//}
 
 	Status = CAN_Reset(canDev[bus]);
 	if (Status != PCAN_ERROR_OK)
 	{
 		CAN_GetErrorText(Status, 0, strMsg);
-		printf("initCAN(): CAN_Reset() failed with error %ld\n", Status);
+		printf("initCAN(): CAN_Reset() failed with error %u\n", Status);
 		printf("%s\n", strMsg);
-		//return Status;
+		return Status;
 	}
 
 	return 0; // PCAN_ERROR_OK
 }
 
-int freeCAN(int bus){
+int freeCAN(int bus) {
 	TPCANStatus Status = PCAN_ERROR_OK;
 	char strMsg[256];
 
@@ -141,7 +113,7 @@ int freeCAN(int bus){
 	if (Status != PCAN_ERROR_OK)
 	{
 		CAN_GetErrorText(Status, 0, strMsg);
-		printf("freeCAN(): CAN_Uninitialize() failed with error %ld\n", Status);
+		printf("freeCAN(): CAN_Uninitialize() failed with error %u\n", Status);
 		printf("%s\n", strMsg);
 		return Status;
 	}
@@ -149,62 +121,80 @@ int freeCAN(int bus){
 	return 0; // PCAN_ERROR_OK
 }
 
-int canReadMsg(int bus, int *id, int *len, unsigned char *data, int blocking){
+int canReadMsg(int bus, int *id, int *len, unsigned char *data, int blocking) {
 	TPCANMsg CANMsg;
 	TPCANTimestamp CANTimeStamp;
 	TPCANStatus Status = PCAN_ERROR_OK;
 	char strMsg[256];
 	int i;
 
-	// We execute the "Read" function of the PCANBasic                
-	//
+	// We execute the "Read" function of the PCANBasic
 	Status = CAN_Read(canDev[bus], &CANMsg, &CANTimeStamp);
-	
 	if (Status != PCAN_ERROR_OK)
 	{
 		if (Status != PCAN_ERROR_QRCVEMPTY)
 		{
 			CAN_GetErrorText(Status, 0, strMsg);
-			printf("canReadMsg(): CAN_Read() failed with error %ld\n", Status);
+			printf("canReadMsg(): CAN_Read() failed with error %u\n", Status);
 			printf("%s\n", strMsg);
 		}
+
 		return Status;
 	}
 
-	*id = CANMsg.ID;
+	*id = (CANMsg.ID & 0xfffffffc) >> 2;
 	*len = CANMsg.LEN;
-	for(i = 0; i < CANMsg.LEN; i++)
+	for (i = 0; i < CANMsg.LEN; i++)
 		data[i] = CANMsg.DATA[i];
 
 	return 0;
 }
 
-int canSendMsg(int bus, int id, char len, unsigned char *data, int blocking){
+int canSendMsg(int bus, int id, char len, unsigned char *data, int blocking) {
 	TPCANMsg CANMsg;
 	TPCANStatus Status = PCAN_ERROR_OK;
 	char strMsg[256];
 	int i;
 
-	CANMsg.ID = id;
+	CANMsg.ID = (id << 2) | CAN_ID;
 	CANMsg.LEN = len & 0x0F;
-	for(i = 0; i < len; i++)
-        CANMsg.DATA[i] = data[i];
+	for (i = 0; i < len; i++)
+		CANMsg.DATA[i] = data[i];
 	CANMsg.MSGTYPE = PCAN_MESSAGE_STANDARD;
-
 	Status = CAN_Write(canDev[bus], &CANMsg);
 	if (Status != PCAN_ERROR_OK)
 	{
 		CAN_GetErrorText(Status, 0, strMsg);
-		printf("canSendMsg(): CAN_Write() failed with error %ld\n", Status);
+		printf("canSendMsg(): CAN_Write() failed with error %u\n", Status);
 		printf("%s\n", strMsg);
 		return Status;
 	}
 
-	return 0;
+	return 0; //PCAN_ERROR_OK;
+}
+
+int canSentRTR(int bus, int id, int blocking) {
+	TPCANMsg CANMsg;
+	TPCANStatus Status = PCAN_ERROR_OK;
+	char strMsg[256];
+
+	CANMsg.ID = (id << 2) | CAN_ID;
+	CANMsg.LEN = 0;
+	CANMsg.MSGTYPE = PCAN_MESSAGE_RTR; // Remote Transmission Request
+	Status = CAN_Write(canDev[bus], &CANMsg);
+	if (Status != PCAN_ERROR_OK)
+	{
+		CAN_GetErrorText(Status, 0, strMsg);
+		printf("canSentRTR(): CAN_Write() failed with error %u\n", Status);
+		printf("%s\n", strMsg);
+		return Status;
+	}
+
+	return 0; //PCAN_ERROR_OK;
 }
 
 /*========================================*/
-/*       CAN API                          */
+/*       Public functions (CAN API)       */
 /*========================================*/
 int command_can_open(int ch)
 {
@@ -218,7 +208,7 @@ int command_can_open(int ch)
 	printf("\t- Ch.%2d (OK)\n", ch);
 	printf("\t- Done\n");
 
-	return 0;
+	return ret;
 }
 
 int command_can_open_ex(int ch, int type, int index)
@@ -243,16 +233,22 @@ int command_can_close(int ch)
 	if (Status != PCAN_ERROR_OK)
 	{
 		CAN_GetErrorText(Status, 0, strMsg);
-		printf("freeCAN(): CAN_Uninitialize() failed with error %ld\n", Status);
+		printf("freeCAN(): CAN_Uninitialize() failed with error %u\n", Status);
 		printf("%s\n", strMsg);
 		return Status;
 	}
 
 	printf("\t- Done\n");
-	return 0; // PCAN_ERROR_OK
+	return 0; //PCAN_ERROR_OK;
 }
 
-int command_can_query_id(int ch)
+int command_can_set_id(int ch, unsigned char can_id)
+{
+	CAN_ID = can_id;
+	return 0; //PCAN_ERROR_OK;
+}
+
+int command_servo_on(int ch)
 {
 	assert(ch >= 0 && ch < MAX_BUS);
 
@@ -260,13 +256,13 @@ int command_can_query_id(int ch)
 	unsigned char data[8];
 	int ret;
 
-	Txid = ((unsigned long)ID_CMD_QUERY_ID<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
+	Txid = ID_CMD_SYSTEM_ON;
 	ret = canSendMsg(ch, Txid, 0, data, TRUE);
 
-	return 0;
+	return ret;
 }
 
-int command_can_sys_init(int ch, int period_msec)
+int command_servo_off(int ch)
 {
 	assert(ch >= 0 && ch < MAX_BUS);
 
@@ -274,126 +270,183 @@ int command_can_sys_init(int ch, int period_msec)
 	unsigned char data[8];
 	int ret;
 
-	Txid = ((unsigned long)ID_CMD_SET_PERIOD<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	data[0] = (unsigned char)period_msec;
-	ret = canSendMsg(ch, Txid, 1, data, TRUE);
-
-	Sleep(10);
-
-	Txid = ((unsigned long)ID_CMD_SET_MODE_TASK<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
+	Txid = ID_CMD_SYSTEM_OFF;
 	ret = canSendMsg(ch, Txid, 0, data, TRUE);
 
-	Sleep(10);
-
-	Txid = ((unsigned long)ID_CMD_QUERY_STATE_DATA<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	ret = canSendMsg(ch, Txid, 0, data, TRUE);
-
-	return 0;
+	return ret;
 }
 
-int command_can_start(int ch)
+int command_set_torque(int ch, int findex, short* pwm)
 {
 	assert(ch >= 0 && ch < MAX_BUS);
+	assert(findex >= 0 && findex < NUM_OF_FINGERS);
 
 	long Txid;
-	unsigned char data[8];
+	short duty[4];
 	int ret;
 
-	Txid = ((unsigned long)ID_CMD_QUERY_STATE_DATA<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	ret = canSendMsg(ch, Txid, 0, data, TRUE);
-
-	Sleep(10);
-
-	Txid = ((unsigned long)ID_CMD_SET_SYSTEM_ON<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	ret = canSendMsg(ch, Txid, 0, data, TRUE);
-
-	return 0;
-}
-
-int command_can_stop(int ch)
-{
-	assert(ch >= 0 && ch < MAX_BUS);
-
-	long Txid;
-	unsigned char data[8];
-	int ret;
-
-	Txid = ((unsigned long)ID_CMD_SET_SYSTEM_OFF<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	ret = canSendMsg(ch, Txid, 0, data, TRUE);
-
-	return 0;
-}
-
-int command_can_AHRS_set(int ch, unsigned char rate, unsigned char mask)
-{
-	assert(ch >= 0 && ch < MAX_BUS);
-
-	long Txid;
-	unsigned char data[8];
-	int ret;
-
-	Txid = ((unsigned long)ID_CMD_AHRS_SET<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-	data[0] = (unsigned char)rate;
-	data[1] = (unsigned char)mask;
-	ret = canSendMsg(ch, Txid, 2, data, TRUE);
-
-	return 0;
-}
-
-int write_current(int ch, int findex, short* pwm)
-{
-	assert(ch >= 0 && ch < MAX_BUS);
-
-	long Txid;
-	unsigned char data[8];
-	int ret;
-
-	if (findex >= 0 && findex < 4)
+	if (findex >= 0 && findex < NUM_OF_FINGERS)
 	{
-		data[0] = (unsigned char)( (pwm[0] >> 8) & 0x00ff);
-		data[1] = (unsigned char)(pwm[0] & 0x00ff);
+		duty[0] = pwm[0];
+		duty[1] = pwm[1];
+		duty[2] = pwm[2];
+		duty[3] = pwm[3];
 
-		data[2] = (unsigned char)( (pwm[1] >> 8) & 0x00ff);
-		data[3] = (unsigned char)(pwm[1] & 0x00ff);
+		Txid = ID_CMD_SET_TORQUE_1 + findex;
 
-		data[4] = (unsigned char)( (pwm[2] >> 8) & 0x00ff);
-		data[5] = (unsigned char)(pwm[2] & 0x00ff);
-
-		data[6] = (unsigned char)( (pwm[3] >> 8) & 0x00ff);
-		data[7] = (unsigned char)(pwm[3] & 0x00ff);
-
-		Txid = ((unsigned long)(ID_CMD_SET_TORQUE_1 + findex)<<6) | ((unsigned long)ID_COMMON <<3) | ((unsigned long)ID_DEVICE_MAIN);
-		ret = canSendMsg(ch, Txid, 8, data, TRUE);
+		ret = canSendMsg(ch, Txid, 8, (unsigned char *)duty, TRUE);
 	}
 	else
 		return -1;
-	
-	return 0;
+
+	return ret;
 }
 
-int get_message(int ch, char* cmd, char* src, char* des, int* len, unsigned char* data, int blocking)
+int command_set_pose(int ch, int findex, short* jposition)
 {
-	int err;
-	unsigned long Rxid;
+	assert(ch >= 0 && ch < MAX_BUS);
+	assert(findex >= 0 && findex < NUM_OF_FINGERS);
 
-	err = canReadMsg(ch, (int*)&Rxid, len, data, blocking);
-	if (!err)
+	long Txid;
+	short pose[4];
+	int ret;
+
+	if (findex >= 0 && findex < NUM_OF_FINGERS)
 	{
-		/*printf("    %ld+%ld (%d)", Rxid-Rxid%128, Rxid%128, len);
-		for(int nd=0; nd<(*len); nd++) printf(" %3d ", data[nd]);
-		printf("\n");*/
+		pose[0] = jposition[0];
+		pose[1] = jposition[1];
+		pose[2] = jposition[2];
+		pose[3] = jposition[3];
 
-		*cmd = (char)( (Rxid >> 6) & 0x1f );
-		*des = (char)( (Rxid >> 3) & 0x07 );
-		*src = (char)( Rxid & 0x07);
+		Txid = ID_CMD_SET_POSE_1 + findex;
+
+		ret = canSendMsg(ch, Txid, 8, (unsigned char *)pose, TRUE);
+	}
+	else
+		return -1;
+
+	return ret;
+}
+
+int command_set_period(int ch, short* period)
+{
+	assert(ch >= 0 && ch < MAX_BUS);
+
+	long Txid;
+	can_period_msg_t msg;
+	int ret;
+
+	Txid = ID_CMD_SET_PERIOD;
+	if (period != 0)
+	{
+		msg.position = period[0];
+		msg.imu = period[1];
+		msg.temp = period[2];
 	}
 	else
 	{
-		return err;
+		msg.position = 0;
+		msg.imu = 0;
+		msg.temp = 0;
 	}
-	return 0;
+	ret = canSendMsg(ch, Txid, 6, (unsigned char *)&msg, TRUE);
+
+	return ret;
 }
 
+int command_set_device_id(int ch, unsigned char did)
+{
+	assert(ch >= 0 && ch < MAX_BUS);
+
+	long Txid;
+	int ret;
+	can_config_msg_t msg;
+
+	Txid = ID_CMD_CONFIG;
+	msg.set = 0x01;
+	msg.did = did;
+	msg.baudrate = 0;
+	ret = canSendMsg(ch, Txid, 6, (unsigned char *)&msg, TRUE);
+
+	return ret;
+}
+
+int command_set_rs485_baudrate(int ch, unsigned int baudrate)
+{
+	assert(ch >= 0 && ch < MAX_BUS);
+
+	long Txid;
+	int ret;
+	can_config_msg_t msg;
+
+	Txid = ID_CMD_CONFIG;
+
+	msg.set = 0x02;
+	msg.did = 0;
+	msg.baudrate = baudrate;
+	ret = canSendMsg(ch, Txid, 6, (unsigned char *)&msg, TRUE);
+
+	return ret;
+}
+
+int request_hand_information(int ch)
+{
+	assert(ch >= 0 && ch < MAX_BUS);
+
+	long Txid = ID_RTR_HAND_INFO;
+	int ret = canSentRTR(ch, Txid, TRUE);
+
+	return ret;
+}
+
+int request_hand_serial(int ch)
+{
+	assert(ch >= 0 && ch < MAX_BUS);
+
+	long Txid = ID_RTR_SERIAL;
+	int ret = canSentRTR(ch, Txid, TRUE);
+
+	return ret;
+}
+
+int request_finger_pose(int ch, int findex)
+{
+	assert(ch >= 0 && ch < MAX_BUS);
+	assert(findex >= 0 && findex < NUM_OF_FINGERS);
+
+	long Txid = ID_RTR_FINGER_POSE + findex;
+	int ret = canSentRTR(ch, Txid, TRUE);
+
+	return ret;
+}
+
+int request_imu_data(int ch)
+{
+	assert(ch >= 0 && ch < MAX_BUS);
+
+	long Txid = ID_RTR_IMU_DATA;
+	int ret = canSentRTR(ch, Txid, TRUE);
+
+	return ret;
+}
+
+int request_temperature(int ch, int sindex)
+{
+	assert(ch >= 0 && ch < MAX_BUS);
+	assert(sindex >= 0 && sindex < NUM_OF_TEMP_SENSORS);
+
+	long Txid = ID_RTR_TEMPERATURE + sindex;
+	int ret = canSentRTR(ch, Txid, TRUE);
+
+	return ret;
+}
+
+int get_message(int ch, int* id, int* len, unsigned char* data, int blocking)
+{
+	int err;
+	err = canReadMsg(ch, id, len, data, blocking);
+	return err;
+}
 
 
 CANAPI_END

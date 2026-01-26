@@ -15,18 +15,10 @@
 /////////////////////////////////////////////////////////////////////////////////////////
 // IMPORTANT !!
 // SET CORRECT HAND PARAMETER HERE BEFORE RUNNING THIS PROGRAM.
-//#define SAH020
-#define SAH030
-const bool	RIGHT_HAND = true;
-const bool	DC_24V = false;
-#if defined SAH020
-const int	HAND_VERSION = 2;
-#elif defined SAH030
-const int	HAND_VERSION = 3;
-#endif
+const bool	RIGHT_HAND = false;
+const int	HAND_VERSION = 4;
 /////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////
-
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // for CAN communication
@@ -54,90 +46,13 @@ double cur_des[MAX_DOF];
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // Hand parameters
-
-const double tau_cov_const_v2 = 800.0; // 800.0 for SAH020xxxxx
-const double tau_cov_const_v3 = 1200.0; // 1200.0 for SAH030xxxxx
-
+const double tau_cov_const_v4 = 1200.0; // 1200.0 for SAH040xxxxx
 const short pwm_max_DC8V = 800; // 1200 is max
 const short pwm_max_DC24V = 500;
-
-#if defined SAH020
-//const double enc_dir[MAX_DOF] = { // SAH020xxxxx
-//	1.0, -1.0, 1.0, 1.0,
-//	1.0, -1.0, 1.0, 1.0,
-//	1.0, -1.0, 1.0, 1.0,
-//	1.0, 1.0, -1.0, -1.0
-//};
-//const double motor_dir[MAX_DOF] = { // SAH020xxxxx
-//	1.0, 1.0, 1.0, 1.0,
-//	1.0, -1.0, -1.0, 1.0,
-//	-1.0, 1.0, 1.0, 1.0,
-//	1.0, 1.0, 1.0, 1.0
-//};
-//const int enc_offset[MAX_DOF] = { // SAH020CR020
-//	-611, -66016, 1161, 1377,
-//	-342, -66033, -481, 303,
-//	30, -65620, 446, 387,
-//	-3942, -626, -65508, -66768
-//};
-//const int enc_offset[MAX_DOF] = { // SAH020BR013
-//	-391,	-64387,	-129,	 532,
-//	 178,	-66030,	-142,	 547,
-//	-234,	-64916,	 7317,	 1923,
-//	 1124,	-1319,	-65983, -65566
-//};
-
-#elif defined SAH030
-
-const double enc_dir[MAX_DOF] = { // SAH030xxxxx
-	1.0, 1.0, 1.0, 1.0,
-	1.0, 1.0, 1.0, 1.0,
-	1.0, 1.0, 1.0, 1.0,
-	1.0, 1.0, 1.0, 1.0
-};
-const double motor_dir[MAX_DOF] = { // SAH030xxxxx
-	1.0, 1.0, 1.0, 1.0,
-	1.0, 1.0, 1.0, 1.0,
-	1.0, 1.0, 1.0, 1.0,
-	1.0, 1.0, 1.0, 1.0
-};
-const int enc_offset[MAX_DOF] = { // SAH020BR015 (upgrated to version 3)
-	 296,	 189,	 2652,	-509,
-	-16,	 302,	 1005,	 1903,
-	 1499,	 1034,	-1232,	 1012,
-	 470,	-6,	    -76,     145
-};
-//const int enc_offset[MAX_DOF] = { // SAH030AR023
-//	-1700, -568, -3064, -36,
-//	-2015, -1687, 188, -772,
-//	-3763, 782, -3402, 368,
-//	1059, -2547, -692, 2411
-//};
-//const int enc_offset[MAX_DOF] = { // SAH030AL025
-//	-21, 617, -123, -2613,
-//	-57, 2265, -270, 284,
-//	2055, 1763, 1683, -2427,
-//	870, -856, 2143, 59
-//};
-//const int enc_offset[MAX_DOF] = { // SAH030AL026
-//	-647, 1776, -198, -2132,
-//	3335, 350, -3093, 468,
-//	-14, 1499, -2176, -960,
-//	-196, -367, 4, -1380
-//};
-//const int enc_offset[MAX_DOF] = { // SAH030BR027
-//	849, 240, 392, -4099,
-//	532, 512, -1062, -853,
-//	-512, -130, -1837, 2565,
-//	853, -2355, 665, 109
-//};
-
-#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // sample motions
 #include "RockScissorsPaper.h"
-
 
 /////////////////////////////////////////////////////////////////////////////////////////
 // functions declarations
@@ -150,14 +65,11 @@ bool CreateBHandAlgorithm();
 void DestroyBHandAlgorithm();
 void ComputeTorque();
 
-
 /////////////////////////////////////////////////////////////////////////////////////////
 // CAN communication thread
 static unsigned int __stdcall ioThreadProc(void* inst)
 {
-	char id_des;
-	char id_cmd;
-	char id_src;
+	int id;
 	int len;
 	unsigned char data[8];
 	unsigned char data_return = 0;
@@ -165,142 +77,126 @@ static unsigned int __stdcall ioThreadProc(void* inst)
 
 	while (ioThreadRun)
 	{
-		while (0 == get_message(CAN_Ch, &id_cmd, &id_src, &id_des, &len, data, FALSE))
+		/* wait for the event */
+		while (0 == get_message(CAN_Ch, &id, &len, data, FALSE))
 		{
-			switch (id_cmd)
+			//            printf(">CAN(%d): ", CAN_Ch);
+			//            for(int nd=0; nd<len; nd++)
+			//                printf("%02x ", data[nd]);
+			//            printf("\n");
+
+			switch (id)
 			{
-			case ID_CMD_QUERY_ID:
-				{
-					printf(">CAN(%d): AllegroHand revision info: 0x%02x%02x\n", CAN_Ch, data[3], data[2]);
-					printf("                      firmware info: 0x%02x%02x\n", data[5], data[4]);
-					printf("                      hardware type: 0x%02x\n", data[7]);
-				}
-				break;
+			case ID_RTR_HAND_INFO:
+			{
+				printf(">CAN(%d): AllegroHand hardware version: 0x%02x%02x\n", CAN_Ch, data[1], data[0]);
+				printf("                      firmware version: 0x%02x%02x\n", data[3], data[2]);
+				printf("                      hardware type: %d(%s)\n", data[4], (data[4] == 0 ? "right" : "left"));
+				printf("                      temperature: %d (celsius)\n", data[5]);
+				printf("                      status: 0x%02x\n", data[6]);
+				printf("                      servo status: %s\n", (data[6] & 0x01 ? "ON" : "OFF"));
+				printf("                      high temperature fault: %s\n", (data[6] & 0x02 ? "ON" : "OFF"));
+				printf("                      internal communication fault: %s\n", (data[6] & 0x04 ? "ON" : "OFF"));
+			}
+			break;
+			case ID_RTR_SERIAL:
+			{
+				printf(">CAN(%d): AllegroHand serial number: SAH0%d0 %c%c%c%c%c%c%c%c\n", CAN_Ch, HAND_VERSION
+					, data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
+			}
+			break;
+			case ID_RTR_FINGER_POSE_1:
+			case ID_RTR_FINGER_POSE_2:
+			case ID_RTR_FINGER_POSE_3:
+			case ID_RTR_FINGER_POSE_4:
+			{
+				int findex = (id & 0x00000007);
 
-			case ID_CMD_AHRS_POSE:
-				{
-					/*printf(">CAN(%d): AHRS Roll : 0x%02x%02x\n", CAN_Ch, data[0], data[1]);
-					printf("               Pitch: 0x%02x%02x\n", data[2], data[3]);
-					printf("               Yaw  : 0x%02x%02x\n", data[4], data[5]);*/
-				}
-				break;
+				vars.enc_actual[findex * 4 + 0] = (short)(data[0] | (data[1] << 8));
+				vars.enc_actual[findex * 4 + 1] = (short)(data[2] | (data[3] << 8));
+				vars.enc_actual[findex * 4 + 2] = (short)(data[4] | (data[5] << 8));
+				vars.enc_actual[findex * 4 + 3] = (short)(data[6] | (data[7] << 8));
+				data_return |= (0x01 << (findex));
+				recvNum++;
 
-			case ID_CMD_AHRS_ACC:
-				{
-					/*printf(">CAN(%d): AHRS Acc(x): 0x%02x%02x\n", CAN_Ch, data[0], data[1]);
-					printf("               Acc(y): 0x%02x%02x\n", data[2], data[3]);
-					printf("               Acc(z): 0x%02x%02x\n", data[4], data[5]);*/
-				}
-				break;
+				//                printf(">CAN(%d): Encoder[%d] Count : %6d %6d %6d %6d\n"
+				//                    , CAN_Ch, findex
+				//                    , vars.enc_actual[findex*4 + 0], vars.enc_actual[findex*4 + 1]
+				//                    , vars.enc_actual[findex*4 + 2], vars.enc_actual[findex*4 + 3]);
 
-			case ID_CMD_AHRS_GYRO:
+				if (data_return == (0x01 | 0x02 | 0x04 | 0x08))
 				{
-					/*printf(">CAN(%d): AHRS Angular Vel(x): 0x%02x%02x\n", CAN_Ch, data[0], data[1]);
-					printf("               Angular Vel(y): 0x%02x%02x\n", data[2], data[3]);
-					printf("               Angular Vel(z): 0x%02x%02x\n", data[4], data[5]);*/
-				}
-				break;
-
-			case ID_CMD_AHRS_MAG:
-				{
-					/*printf(">CAN(%d): AHRS Magnetic Field(x): 0x%02x%02x\n", CAN_Ch, data[0], data[1]);
-					printf("               Magnetic Field(y): 0x%02x%02x\n", data[2], data[3]);
-					printf("               Magnetic Field(z): 0x%02x%02x\n", data[4], data[5]);*/
-				}
-				break;
-
-			case ID_CMD_QUERY_CONTROL_DATA:
-				{
-					if (id_src >= ID_DEVICE_SUB_01 && id_src <= ID_DEVICE_SUB_04)
+					// convert encoder count to joint angle
+					for (i = 0; i<MAX_DOF; i++)
 					{
-						vars.enc_actual[(id_src-ID_DEVICE_SUB_01)*4 + 0] = (int)(data[0] | (data[1] << 8));
-						vars.enc_actual[(id_src-ID_DEVICE_SUB_01)*4 + 1] = (int)(data[2] | (data[3] << 8));
-						vars.enc_actual[(id_src-ID_DEVICE_SUB_01)*4 + 2] = (int)(data[4] | (data[5] << 8));
-						vars.enc_actual[(id_src-ID_DEVICE_SUB_01)*4 + 3] = (int)(data[6] | (data[7] << 8));
-						data_return |= (0x01 << (id_src-ID_DEVICE_SUB_01));
-						recvNum++;
+						q[i] = (double)(vars.enc_actual[i])*(333.3 / 65536.0)*(3.141592 / 180.0);
 					}
-					if (data_return == (0x01 | 0x02 | 0x04 | 0x08))
+
+					// print joint angles
+					//                    for (int i=0; i<4; i++)
+					//                    {
+					//                        printf(">CAN(%d): Joint[%d] Pos : %5.1f %5.1f %5.1f %5.1f\n"
+					//                            , CAN_Ch, i, q[i*4+0]*RAD2DEG, q[i*4+1]*RAD2DEG, q[i*4+2]*RAD2DEG, q[i*4+3]*RAD2DEG);
+					//                    }
+
+					// compute joint torque
+					ComputeTorque();
+
+					// convert desired torque to desired current and PWM count
+					for (int i = 0; i<MAX_DOF; i++)
 					{
-						// convert encoder count to joint angle
-						for (i=0; i<MAX_DOF; i++)
-							q[i] = (double)(vars.enc_actual[i]*enc_dir[i]-32768-enc_offset[i])*(333.3/65536.0)*(3.141592/180.0);
-
-						// compute joint torque
-						ComputeTorque();
-
-						// convert desired torque to desired current and PWM count
-						for (i=0; i<MAX_DOF; i++)
-						{
-							cur_des[i] = tau_des[i] * motor_dir[i];
-							if (cur_des[i] > 1.0) cur_des[i] = 1.0;
-							else if (cur_des[i] < -1.0) cur_des[i] = -1.0;
-						}
-
-						// send torques
-						for (int i=0; i<4;i++)
-						{
-							// the index order for motors is different from that of encoders
-
-							switch (HAND_VERSION)
-							{
-								case 1:
-								case 2:
-									vars.pwm_demand[i*4+3] = (short)(cur_des[i*4+0]*tau_cov_const_v2);
-									vars.pwm_demand[i*4+2] = (short)(cur_des[i*4+1]*tau_cov_const_v2);
-									vars.pwm_demand[i*4+1] = (short)(cur_des[i*4+2]*tau_cov_const_v2);
-									vars.pwm_demand[i*4+0] = (short)(cur_des[i*4+3]*tau_cov_const_v2);
-									break;
-
-								case 3:
-								default:
-									vars.pwm_demand[i*4+3] = (short)(cur_des[i*4+0]*tau_cov_const_v3);
-									vars.pwm_demand[i*4+2] = (short)(cur_des[i*4+1]*tau_cov_const_v3);
-									vars.pwm_demand[i*4+1] = (short)(cur_des[i*4+2]*tau_cov_const_v3);
-									vars.pwm_demand[i*4+0] = (short)(cur_des[i*4+3]*tau_cov_const_v3);
-									break;
-							}
-
-							if (DC_24V) {
-								for (int j=0; j<4; j++) {
-									if (vars.pwm_demand[i*4+j] > pwm_max_DC24V) vars.pwm_demand[i*4+j] = pwm_max_DC24V;
-									else if (vars.pwm_demand[i*4+j] < -pwm_max_DC24V) vars.pwm_demand[i*4+j] = -pwm_max_DC24V;
-								}
-							} 
-							else {
-								for (int j=0; j<4; j++) {
-									if (vars.pwm_demand[i*4+j] > pwm_max_DC8V) vars.pwm_demand[i*4+j] = pwm_max_DC8V;
-									else if (vars.pwm_demand[i*4+j] < -pwm_max_DC8V) vars.pwm_demand[i*4+j] = -pwm_max_DC8V;
-								}
-
-							}
-
-							write_current(CAN_Ch, i, &vars.pwm_demand[4*i]);
-							for(int k=0; k<100000; k++);
-						}
-						sendNum++;
-						curTime += delT;
-
-						data_return = 0;
+						cur_des[i] = tau_des[i];
+						if (cur_des[i] > 1.0) cur_des[i] = 1.0;
+						else if (cur_des[i] < -1.0) cur_des[i] = -1.0;
 					}
+
+					// send torques
+					for (int i = 0; i<4; i++)
+					{
+						vars.pwm_demand[i * 4 + 0] = (short)(cur_des[i * 4 + 0] * tau_cov_const_v4);
+						vars.pwm_demand[i * 4 + 1] = (short)(cur_des[i * 4 + 1] * tau_cov_const_v4);
+						vars.pwm_demand[i * 4 + 2] = (short)(cur_des[i * 4 + 2] * tau_cov_const_v4);
+						vars.pwm_demand[i * 4 + 3] = (short)(cur_des[i * 4 + 3] * tau_cov_const_v4);
+
+						command_set_torque(CAN_Ch, i, &vars.pwm_demand[4 * i]);
+						//for (int k = 0; k<100000; k++);
+						//usleep(5);
+					}
+					sendNum++;
+					curTime += delT;
+					data_return = 0;
 				}
-				break;
+			}
+			break;
+			case ID_RTR_IMU_DATA:
+			{
+				printf(">CAN(%d): AHRS Roll : 0x%02x%02x\n", CAN_Ch, data[0], data[1]);
+				printf("               Pitch: 0x%02x%02x\n", data[2], data[3]);
+				printf("               Yaw  : 0x%02x%02x\n", data[4], data[5]);
+			}
+			break;
+			case ID_RTR_TEMPERATURE_1:
+			case ID_RTR_TEMPERATURE_2:
+			case ID_RTR_TEMPERATURE_3:
+			case ID_RTR_TEMPERATURE_4:
+			{
+				int sindex = (id & 0x00000007);
+				int celsius = (int)(data[0]) |
+					(int)(data[1] << 8) |
+					(int)(data[2] << 16) |
+					(int)(data[3] << 24);
+				printf(">CAN(%d): Temperature[%d]: %d (celsius)\n", CAN_Ch, sindex, celsius);
+			}
+			break;
+			default:
+				printf(">CAN(%d): unknown command %d, len %d\n", CAN_Ch, id, len);
+				/*for(int nd=0; nd<len; nd++)
+				printf("%d \n ", data[nd]);*/
+				//return;
 			}
 		}
 	}
-
-	return 0;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////
-// Compute control torque for each joint using BHand library
-void ComputeTorque()
-{
-	if (!pBHand) return;
-	pBHand->SetJointPosition(q); // tell BHand library the current joint positions
-	pBHand->SetJointDesiredPosition(q_des);
-	pBHand->UpdateControl(0);
-	pBHand->GetJointTorque(tau_des);
+	return NULL;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -403,7 +299,7 @@ void MainLoop()
 				if (pBHand) pBHand->SetMotionType(eMotionType_ENVELOP);
 				break;
 
-			case 'o':
+			case 'f':
 				if (pBHand) pBHand->SetMotionType(eMotionType_NONE);
 				break;
 
@@ -421,6 +317,29 @@ void MainLoop()
 			}
 		}
 	}
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Compute control torque for each joint using BHand library
+void ComputeTorque()
+{
+	if (!pBHand) return;
+	pBHand->SetJointPosition(q); // tell BHand library the current joint positions
+	pBHand->SetJointDesiredPosition(q_des);
+	pBHand->UpdateControl(0);
+	pBHand->GetJointTorque(tau_des);
+
+	//    static int j_active[] = {
+	//        0, 0, 0, 0,
+	//        0, 0, 0, 0,
+	//        0, 0, 0, 0,
+	//        1, 1, 1, 1
+	//    };
+	//    for (int i=0; i<MAX_DOF; i++) {
+	//        if (j_active[i] == 0) {
+	//            tau_des[i] = 0;
+	//        }
+	//    }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -457,39 +376,41 @@ bool OpenCAN()
 	ioThread = _beginthreadex(NULL, 0, ioThreadProc, NULL, 0, NULL);
 	printf(">CAN: starts listening CAN frames\n");
 	
-	printf(">CAN: query system id\n");
-	ret = command_can_query_id(CAN_Ch);
-	if(ret < 0)
+	// query h/w information
+	printf(">CAN: query system information\n");
+	ret = request_hand_information(CAN_Ch);
+	if (ret < 0)
 	{
-		printf("ERROR command_can_query_id !!! \n");
+		printf("ERROR request_hand_information !!! \n");
+		command_can_close(CAN_Ch);
+		return false;
+	}
+	ret = request_hand_serial(CAN_Ch);
+	if (ret < 0)
+	{
+		printf("ERROR request_hand_serial !!! \n");
 		command_can_close(CAN_Ch);
 		return false;
 	}
 
-	printf(">CAN: AHRS set\n");
-	ret = command_can_AHRS_set(CAN_Ch, AHRS_RATE_100Hz, AHRS_MASK_POSE | AHRS_MASK_ACC);
-	if(ret < 0)
+	// set periodic communication parameters(period)
+	printf(">CAN: Comm period set\n");
+	short comm_period[3] = { 3, 0, 0 }; // millisecond {position, imu, temperature}
+	ret = command_set_period(CAN_Ch, comm_period);
+	if (ret < 0)
 	{
-		printf("ERROR command_can_AHRS_set !!! \n");
+		printf("ERROR command_set_period !!! \n");
 		command_can_close(CAN_Ch);
 		return false;
 	}
 
-	printf(">CAN: system init\n");
-	ret = command_can_sys_init(CAN_Ch, 3/*msec*/);
-	if(ret < 0)
+	// servo on
+	printf(">CAN: servo on\n");
+	ret = command_servo_on(CAN_Ch);
+	if (ret < 0)
 	{
-		printf("ERROR command_can_sys_init !!! \n");
-		command_can_close(CAN_Ch);
-		return false;
-	}
-
-	printf(">CAN: start periodic communication\n");
-	ret = command_can_start(CAN_Ch);
-	if(ret < 0)
-	{
-		printf("ERROR command_can_start !!! \n");
-		command_can_stop(CAN_Ch);
+		printf("ERROR command_servo_on !!! \n");
+		command_set_period(CAN_Ch, 0);
 		command_can_close(CAN_Ch);
 		return false;
 	}
@@ -504,7 +425,7 @@ void CloseCAN()
 	int ret;
 
 	printf(">CAN: stop periodic communication\n");
-	ret = command_can_stop(CAN_Ch);
+	ret = command_set_period(CAN_Ch, 0);
 	if(ret < 0)
 	{
 		printf("ERROR command_can_stop !!! \n");
@@ -525,6 +446,34 @@ void CloseCAN()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
+// Load and create grasping algorithm
+bool CreateBHandAlgorithm()
+{
+	if (RIGHT_HAND)
+		pBHand = bhCreateRightHand();
+	else
+		pBHand = bhCreateLeftHand();
+
+	if (!pBHand) return false;
+	pBHand->SetMotionType(eMotionType_NONE);
+	pBHand->SetTimeInterval(delT);
+	return true;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+// Destroy grasping algorithm
+void DestroyBHandAlgorithm()
+{
+	if (pBHand)
+	{
+#ifndef _DEBUG
+		delete pBHand;
+#endif
+		pBHand = NULL;
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
 // Print program information and keyboard instructions
 void PrintInstruction()
 {
@@ -534,15 +483,14 @@ void PrintInstruction()
 
 	printf("Keyboard Commands:\n");
 	printf("H: Home Position (PD control)\n");
-	printf("R: Ready Position (used before grasping)\n");	
+	printf("R: Ready Position (used before grasping)\n");
 	printf("G: Three-Finger Grasp\n");
 	printf("K: Four-Finger Grasp\n");
 	printf("P: Two-finger pinch (index-thumb)\n");
 	printf("M: Two-finger pinch (middle-thumb)\n");
 	printf("E: Envelop Grasp (all fingers)\n");
 	printf("A: Gravity Compensation\n\n");
-
-	printf("O: Servos OFF (any grasp cmd turns them back on)\n");
+	printf("F: Servos OFF (any grasp cmd turns them back on)\n");
 	printf("Q: Quit this program\n");
 
 	printf("--------------------------------------------------\n\n");
@@ -612,33 +560,6 @@ int GetCANChannelIndex(const TCHAR* cname)
 		return 271;
 	else
 		return 0;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////
-// Load and create grasping algorithm
-bool CreateBHandAlgorithm()
-{
-	if (RIGHT_HAND)
-		pBHand = bhCreateRightHand();
-	else
-		pBHand = bhCreateLeftHand();
-
-	if (!pBHand) return false;
-	pBHand->SetTimeInterval(delT);
-	return true;
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////
-// Destroy grasping algorithm
-void DestroyBHandAlgorithm()
-{
-	if (pBHand)
-	{
-#ifndef _DEBUG
-		delete pBHand;
-#endif
-		pBHand = NULL;
-	}
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
